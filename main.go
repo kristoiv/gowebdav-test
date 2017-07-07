@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/net/webdav"
 )
@@ -27,5 +29,36 @@ func main() {
 			}
 		},
 	}
-	log.Fatalln(http.ListenAndServe(":8080", h))
+	log.Fatalln(http.ListenAndServe(":8080", BasicAuthMiddleware("kristoiv", "1234", h)))
+}
+
+func BasicAuthMiddleware(username, password string, h http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+
+		s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+		if len(s) != 2 {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		b, err := base64.StdEncoding.DecodeString(s[1])
+		if err != nil {
+			http.Error(w, err.Error(), 401)
+			return
+		}
+
+		pair := strings.SplitN(string(b), ":", 2)
+		if len(pair) != 2 {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		if pair[0] != username || pair[1] != password {
+			http.Error(w, "Not authorized", 401)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	}
 }
